@@ -1,5 +1,7 @@
 import argparse
 
+import wandb
+
 import easyfl
 from client import FedSSLClient
 from dataset import get_semi_supervised_dataset
@@ -7,26 +9,27 @@ from easyfl.datasets.data import CIFAR100
 from easyfl.distributed import slurm
 from model import get_model, BYOLNoEMA, BYOL, BYOLNoSG, BYOLNoEMA_NoSG
 from server import FedSSLServer
-
+import ssl
+ssl._create_default_https_context = ssl._create_unverified_context
 
 def run():
     parser = argparse.ArgumentParser(description='FedSSL')
-    parser.add_argument("--task_id", type=str, default="")
+    parser.add_argument("--task_id", type=str, default="fedsimclr")
     parser.add_argument("--dataset", type=str, default='cifar10', help='options: cifar10, cifar100')
     parser.add_argument("--data_partition", type=str, default='class', help='options: class, iid, dir')
     parser.add_argument("--dir_alpha", type=float, default=0.1, help='alpha for dirichlet sampling')
-    parser.add_argument('--model', default='byol', type=str, help='options: byol, simsiam, simclr, moco, moco_v2')
+    parser.add_argument('--model', default='simclr', type=str, help='options: byol, simsiam, simclr, moco, moco_v2')
     parser.add_argument('--encoder_network', default='resnet18', type=str,
                         help='network architecture of encoder, options: resnet18, resnet50')
     parser.add_argument('--predictor_network', default='2_layer', type=str,
                         help='network of predictor, options: 1_layer, 2_layer')
 
-    parser.add_argument('--batch_size', default=128, type=int)
+    parser.add_argument('--batch_size', default=500, type=int)
     parser.add_argument('--local_epoch', default=5, type=int)
     parser.add_argument('--rounds', default=100, type=int)
     parser.add_argument('--num_of_clients', default=5, type=int)
     parser.add_argument('--clients_per_round', default=5, type=int)
-    parser.add_argument('--class_per_client', default=2, type=int,
+    parser.add_argument('--class_per_client', default=10, type=int,
                         help='for non-IID setting, number of classes each client, based on CIFAR10')
     parser.add_argument('--optimizer_type', default='SGD', type=str, help='optimizer type')
     parser.add_argument('--lr', default=0.032, type=float)
@@ -50,10 +53,10 @@ def run():
     parser.add_argument('--save_model_every', default=10, type=int, help='save model every x rounds')
     parser.add_argument('--save_predictor', action='store_true', help='whether save predictor')
 
-    parser.add_argument('--semi_supervised', action='store_true', help='whether to train with semi-supervised data')
-    parser.add_argument('--label_ratio', default=0.01, type=float, help='percentage of labeled data')
+    parser.add_argument('--semi_supervised', default=0, help='whether to train with semi-supervised data')
+    parser.add_argument('--label_ratio', default=0.0, type=float, help='percentage of labeled data')
 
-    parser.add_argument('--gpu', default=0, type=int)
+    parser.add_argument('--gpu', default=1, type=int)
     parser.add_argument('--run_count', default=0, type=int)
 
     args = parser.parse_args()
@@ -119,7 +122,6 @@ def run():
             "rounds": args.rounds,
             "gaussian": False,
             "image_size": image_size,
-
             "aggregate_encoder": args.aggregate_encoder,
             "update_encoder": args.update_encoder,
             "update_predictor": args.update_predictor,
@@ -134,6 +136,7 @@ def run():
 
             "momentum_update": momentum_update,
         },
+        'device': 'cuda',
         'resource_heterogeneous': {"grouping_strategy": ""}
     }
 
@@ -159,6 +162,7 @@ def run():
         easyfl.register_dataset(train_data, test_data)
 
     model = get_model(args.model, args.encoder_network, args.predictor_network)
+    model = model.to('cuda')
     easyfl.register_model(model)
     easyfl.register_client(FedSSLClient)
     easyfl.register_server(FedSSLServer)
@@ -167,4 +171,5 @@ def run():
 
 
 if __name__ == '__main__':
+    wandb.init(project='Basis_Aggregation_{}'.format('cifar10'), name='simclr', entity='peilab')
     run()
