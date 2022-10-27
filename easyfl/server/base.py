@@ -90,6 +90,16 @@ def create_argument_parser():
     return parser
 
 
+def recreate_feature(data, b):
+    A = torch.matmul(b, data.t())
+    u, s, v = torch.svd(A)
+    u = torch.matmul(v, u.t())
+    # u = u[:, :select]
+    # b = b[:select]
+    # f = torch.matmul(u, b)
+    return u
+
+
 class BaseServer(object):
     """Default implementation of federated learning server.
 
@@ -385,6 +395,7 @@ class BaseServer(object):
         uploaded_models = {}
         uploaded_weights = {}
         uploaded_metrics = []
+        kl_loss = torch.nn.MSELoss()
         device = 'cuda'
         iter_total = []
         self.conf.client.task_id = self.conf.task_id
@@ -422,18 +433,50 @@ class BaseServer(object):
                     x1, x2 = batched_x1.to(device), batched_x2.to(device)
                     client.optimizer.zero_grad()
                     if client.conf.model in [MoCo, MoCoV2]:
-                        loss = client.model(x1, x2, device)
+                        client.loss = client.model(x1, x2, device)
                     elif client.conf.model == SimCLR:
                         images = torch.cat((x1, x2), dim=0)
-                        features = client.model(images)
-                        logits, labels = client.info_nce_loss(features)
-                        loss = client.loss_fn(logits, labels)
+                        client.features = client.model(images)
+                        logits, labels = client.info_nce_loss(client.features)
+                        client.loss = client.loss_fn(logits, labels)
                     else:
-                        loss = client.model(x1, x2)
+                        client.loss = client.model(x1, x2)
 
-                    loss.backward()
+                if self.conf.semantic_align:
+                    for client in self.grouped_clients:
+                        if self.conf.semantic_method == 'QR':
+                            w, b = torch.linalg.qr(client.features.detach())
+                        elif self.conf.semantic_method == 'SVD':
+                            u, s, v = torch.svd(client.features.detach())
+                            sigma = torch.diag_embed(s)
+                            b = torch.matmul(sigma, v.t())
+                            w = u
+                        client.b = b
+                        client.w = w
+
+                    if self.conf.aggregation_method =='avg':
+                        b_avg = []
+                        for client in self.grouped_clients:
+                            b_avg.append(client.b)
+                        b_avg = sum(b_avg)/len(b_avg)
+
+                        for client in self.grouped_clients:
+                            proj_label = torch.matmul(client.w, b_avg)
+                            loss_ours = kl_loss(client.features, proj_label.detach())
+                            client.loss += loss_ours
+
+                    elif self.conf.aggregation_method =='semantic':
+                        for client in self.grouped_clients:
+                            for client_op in self.grouped_clients:
+                                if client.cid != client_op.cid:
+                                    proj_label = recreate_feature(client.features, client_op.b)
+                                    loss_ours = kl_loss(client.features, proj_label)
+                                    client.loss += loss_ours/(len(self.grouped_clients)-1)
+
+                for client in self.grouped_clients:
+                    client.loss.backward()
                     client.optimizer.step()
-                    client.batch_loss.append(loss.item())
+                    client.batch_loss.append(client.loss.item())
 
                     if client.conf.model in [BYOL, BYOLNoSG, BYOLNoPredictor] and client.conf.momentum_update:
                         client.model.update_moving_average()

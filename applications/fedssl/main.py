@@ -24,8 +24,8 @@ def run():
     parser.add_argument('--predictor_network', default='2_layer', type=str,
                         help='network of predictor, options: 1_layer, 2_layer')
 
-    parser.add_argument('--batch_size', default=500, type=int)
-    parser.add_argument('--local_epoch', default=1, type=int)
+    parser.add_argument('--batch_size', default=400, type=int)
+    parser.add_argument('--local_epoch', default=5, type=int)
     parser.add_argument('--rounds', default=100, type=int)
     parser.add_argument('--num_of_clients', default=5, type=int)
     parser.add_argument('--clients_per_round', default=5, type=int)
@@ -139,8 +139,34 @@ def run():
         'device': 'cuda',
         'resource_heterogeneous': {"grouping_strategy": ""},
         'personalized': True,  # whether you use individual model without aggregation
-        'batch_wise': True     # whether to use batch_wise training paradim
+        'batch_wise': True,     # whether to use batch_wise training paradim
+        'semantic_align': True,
+        'semantic_method': 'QR',
+        'aggregation_method': 'semantic',
     }
+
+    name0 = args.model
+
+    if config['personalized']:
+        name1 = '_local_'
+    else:
+        name1 = '_weights_agg_'
+
+    if config['batch_wise']:
+        name2 = 'batch_wise_'
+    else:
+        name2 = 'epoch_wise_'
+
+    if config['semantic_align']:
+        name3 = config['semantic_method'] + '_' + config['aggregation_method']
+    else:
+        name3 = ''
+
+    name = name0+name1+name2+name3
+    args.task_id = name
+
+    wandb.init(project='EasyFL_{}'.format(args.dataset), name=name, entity='peilab')
+
 
     if args.gpu > 1:
         rank, local_rank, world_size, host_addr = slurm.setup()
@@ -170,8 +196,8 @@ def run():
     easyfl.register_server(FedSSLServer)
     easyfl.init(config, init_all=True)
     easyfl.run()
+    wandb.finish()
 
 
 if __name__ == '__main__':
-    # wandb.init(project='Basis_Aggregation_{}'.format('cifar10'), name='local_simclr', entity='peilab')
     run()
