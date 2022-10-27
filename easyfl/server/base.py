@@ -368,15 +368,19 @@ class BaseServer(object):
         """Distribute model and configurations to selected clients to train."""
         if self.is_remote:
             self.distribution_to_train_remotely()
+        elif self.conf.batch_wise:
+            self.distribution_to_train_locally_batch_wise()
+            if self.conf.is_distributed and self.conf.resource_heterogeneous.grouping_strategy == GREEDY_GROUPING:
+                self.profile_training_speed()
+                self.update_default_time()
         else:
             self.distribution_to_train_locally()
-
             # Adaptively update the training time of clients for greedy grouping.
             if self.conf.is_distributed and self.conf.resource_heterogeneous.grouping_strategy == GREEDY_GROUPING:
                 self.profile_training_speed()
                 self.update_default_time()
 
-    def distribution_to_train_locally(self):
+    def distribution_to_train_locally_batch_wise(self):
         """Conduct training sequentially for selected clients in the group."""
         uploaded_models = {}
         uploaded_weights = {}
@@ -475,21 +479,25 @@ class BaseServer(object):
 
         self.set_client_uploads_train(uploaded_models, uploaded_weights, uploaded_metrics)
 
-        # Previous version
+    def distribution_to_train_locally(self):
+        """Conduct training sequentially for selected clients in the group."""
+        uploaded_models = {}
+        uploaded_weights = {}
+        uploaded_metrics = []
+        for client in self.grouped_clients:
+            # Update client config before training
+            self.conf.client.task_id = self.conf.task_id
+            self.conf.client.round_id = self._current_round
 
-        # for client in self.grouped_clients:
-        #     # Update client config before training
-        #     self.conf.client.task_id = self.conf.task_id
-        #     self.conf.client.round_id = self._current_round
-        #     self.conf.client['personalized'] = self.conf['personalized']
-        #     uploaded_request = client.run_train(self._compressed_model, self.conf.client)
-        #     uploaded_content = uploaded_request.content
-        #     model = self.decompression(codec.unmarshal(uploaded_content.data))
-        #     uploaded_models[client.cid] = model
-        #     uploaded_weights[client.cid] = uploaded_content.data_size
-        #     uploaded_metrics.append(metric.ClientMetric.from_proto(uploaded_content.metric))
-        #
-        # self.set_client_uploads_train(uploaded_models, uploaded_weights, uploaded_metrics)
+            uploaded_request = client.run_train(self._compressed_model, self.conf.client)
+            uploaded_content = uploaded_request.content
+
+            model = self.decompression(codec.unmarshal(uploaded_content.data))
+            uploaded_models[client.cid] = model
+            uploaded_weights[client.cid] = uploaded_content.data_size
+            uploaded_metrics.append(metric.ClientMetric.from_proto(uploaded_content.metric))
+
+        self.set_client_uploads_train(uploaded_models, uploaded_weights, uploaded_metrics)
 
     def distribution_to_train_remotely(self):
         """Distribute training requests to remote clients through multiple threads.

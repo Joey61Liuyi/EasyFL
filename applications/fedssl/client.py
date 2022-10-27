@@ -194,14 +194,6 @@ class FedSSLClient(BaseClient):
 
 
 
-
-
-
-
-
-
-
-
     def train(self, conf, device=CPU):
         start_time = time.time()
         loss_fn, optimizer = self.pretrain_setup(conf, device)

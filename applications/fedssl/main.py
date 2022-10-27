@@ -138,7 +138,8 @@ def run():
         },
         'device': 'cuda',
         'resource_heterogeneous': {"grouping_strategy": ""},
-        'personalized': True  # whether you use individual model without aggregation
+        'personalized': True,  # whether you use individual model without aggregation
+        'batch_wise': True     # whether to use batch_wise training paradim
     }
 
     if args.gpu > 1:
