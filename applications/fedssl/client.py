@@ -192,6 +192,16 @@ class FedSSLClient(BaseClient):
             self.model.target_encoder = copy.deepcopy(target_encoder)
             self.model.online_predictor = copy.deepcopy(predictor)
 
+
+
+
+
+
+
+
+
+
+
     def train(self, conf, device=CPU):
         start_time = time.time()
         loss_fn, optimizer = self.pretrain_setup(conf, device)

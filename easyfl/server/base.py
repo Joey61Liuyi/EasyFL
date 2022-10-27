@@ -25,6 +25,9 @@ from easyfl.server.service import ServerService
 from easyfl.tracking import metric
 from easyfl.tracking.client import init_tracking
 from easyfl.utils.float import rounding
+from easyfl.tracking.evaluation import model_size
+from applications.fedssl.communication import ONLINE, TARGET, BOTH, LOCAL, GLOBAL, DAPU, NONE, EMA, DYNAMIC_DAPU, DYNAMIC_EMA_ONLINE, SELECTIVE_EMA
+import applications.fedssl.model as model
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +43,28 @@ EQUAL_AVERAGE = "equal"
 
 AGGREGATION_CONTENT_ALL = "all"
 AGGREGATION_CONTENT_PARAMS = "parameters"
+
+
+SimSiam = "simsiam"
+SimSiamNoSG = "simsiam_no_sg"
+SimCLR = "simclr"
+MoCo = "moco"
+MoCoV2 = "moco_v2"
+BYOL = "byol"
+BYOLNoSG = "byol_no_sg"
+BYOLNoEMA = "byol_no_ema"
+BYOLNoEMA_NoSG = "byol_no_ema_no_sg"
+BYOLNoPredictor = "byol_no_p"
+Symmetric = "symmetric"
+SymmetricNoSG = "symmetric_no_sg"
+
+OneLayer = "1_layer"
+TwoLayer = "2_layer"
+
+RESNET18 = "resnet18"
+RESNET50 = "resnet50"
+
+
 
 
 def create_argument_parser():
@@ -356,18 +381,115 @@ class BaseServer(object):
         uploaded_models = {}
         uploaded_weights = {}
         uploaded_metrics = []
+        device = 'cuda'
+        iter_total = []
+        self.conf.client.task_id = self.conf.task_id
+        self.conf.client.round_id = self._current_round
         for client in self.grouped_clients:
-            # Update client config before training
-            self.conf.client.task_id = self.conf.task_id
-            self.conf.client.round_id = self._current_round
-            uploaded_request = client.run_train(self._compressed_model, self.conf.client)
-            uploaded_content = uploaded_request.content
+            client.conf = self.conf.client
+            if client.conf.track:
+                client._tracker.set_client_context(client.conf.task_id, client.conf.round_id, client.cid)
+            client._is_train = True
+            if self.conf['personalized'] and client._local_model !=None:
+                model_tep = client._local_model
+            else:
+                model_tep = self._compressed_model
+            client.download(model_tep)
+            client.track(metric.TRAIN_DOWNLOAD_SIZE, model_size(model_tep))
+            client.decompression()
+            client.pre_train()
+            client.train_loss = []
+            client.loss_fn, client.optimizer = client.pretrain_setup(self.conf.client, 'cuda')
+            if client.conf.model in [MoCo, MoCoV2]:
+                client.model.reset_key_encoder()
+            client.model.to(device)
+            client.old_model = copy.deepcopy(torch.nn.Sequential(*list(client.model.children())[:-1])).cpu()
+            iter_total.append(len(client.train_loader))
+
+        iter_total = int(sum(iter_total)/len(iter_total))
+        start_time = time.time()
+        for epoch in range(self.conf.client['local_epoch']):
+            for client in self.grouped_clients:
+                client.batch_loss = []
+
+            for i in range(iter_total):
+                for client in self.grouped_clients:
+                    (batched_x1, batched_x2), _ = iter(client.train_loader).next()
+                    x1, x2 = batched_x1.to(device), batched_x2.to(device)
+                    client.optimizer.zero_grad()
+                    if client.conf.model in [MoCo, MoCoV2]:
+                        loss = client.model(x1, x2, device)
+                    elif client.conf.model == SimCLR:
+                        images = torch.cat((x1, x2), dim=0)
+                        features = client.model(images)
+                        logits, labels = client.info_nce_loss(features)
+                        loss = client.loss_fn(logits, labels)
+                    else:
+                        loss = client.model(x1, x2)
+
+                    loss.backward()
+                    client.optimizer.step()
+                    client.batch_loss.append(loss.item())
+
+                    if client.conf.model in [BYOL, BYOLNoSG, BYOLNoPredictor] and client.conf.momentum_update:
+                        client.model.update_moving_average()
+
+            for client in self.grouped_clients:
+                current_epoch_loss = sum(client.batch_loss) / len(client.batch_loss)
+                client.train_loss.append(float(current_epoch_loss))
+                logger.debug("Client {}, local epoch: {}, loss: {}".format(client.cid, epoch, current_epoch_loss))
+
+                client._local_model = copy.deepcopy(client.model).cpu()
+                client.previous_trained_round = client.conf.round_id
+                if client.conf.update_predictor in [DAPU, DYNAMIC_DAPU, SELECTIVE_EMA] or client.conf.update_encoder in [
+                    DYNAMIC_EMA_ONLINE, SELECTIVE_EMA]:
+                    new_model = copy.deepcopy(torch.nn.Sequential(*list(client.model.children())[:-1])).cpu()
+                    client.encoder_distance = client._calculate_divergence(client.old_model, new_model)
+                    client.encoder_distances.append(client.encoder_distance.item())
+                    client.DAPU_predictor = client._DAPU_predictor_usage(client.encoder_distance)
+                    if client.conf.auto_scaler == 'y' and client.conf.random_selection:
+                        client._calculate_weight_scaler()
+                    if (client.conf.round_id + 1) % 100 == 0:
+                        logger.info(f"Client {client.cid}, encoder distances: {client.encoder_distances}")
+
+        self.train_time = time.time() - start_time
+        logger.debug("Train Time: {}".format(self.train_time))
+
+        for client in self.grouped_clients:
+            # client.pos_train()
+            client.track(metric.TRAIN_ACCURACY, client.train_accuracy)
+            client.track(metric.TRAIN_LOSS, client.train_loss)
+            client.track(metric.TRAIN_TIME, client.train_time)
+
+            if client.conf.local_test:
+                client.test_local()
+            client.compression()
+            client.track(metric.TRAIN_UPLOAD_SIZE, model_size(client.compressed_model))
+            client.encryption()
+            request = client.upload()
+            uploaded_content = request.content
             model = self.decompression(codec.unmarshal(uploaded_content.data))
             uploaded_models[client.cid] = model
             uploaded_weights[client.cid] = uploaded_content.data_size
             uploaded_metrics.append(metric.ClientMetric.from_proto(uploaded_content.metric))
 
         self.set_client_uploads_train(uploaded_models, uploaded_weights, uploaded_metrics)
+
+        # Previous version
+
+        # for client in self.grouped_clients:
+        #     # Update client config before training
+        #     self.conf.client.task_id = self.conf.task_id
+        #     self.conf.client.round_id = self._current_round
+        #     self.conf.client['personalized'] = self.conf['personalized']
+        #     uploaded_request = client.run_train(self._compressed_model, self.conf.client)
+        #     uploaded_content = uploaded_request.content
+        #     model = self.decompression(codec.unmarshal(uploaded_content.data))
+        #     uploaded_models[client.cid] = model
+        #     uploaded_weights[client.cid] = uploaded_content.data_size
+        #     uploaded_metrics.append(metric.ClientMetric.from_proto(uploaded_content.metric))
+        #
+        # self.set_client_uploads_train(uploaded_models, uploaded_weights, uploaded_metrics)
 
     def distribution_to_train_remotely(self):
         """Distribute training requests to remote clients through multiple threads.

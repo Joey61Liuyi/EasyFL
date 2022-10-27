@@ -25,7 +25,7 @@ def run():
                         help='network of predictor, options: 1_layer, 2_layer')
 
     parser.add_argument('--batch_size', default=500, type=int)
-    parser.add_argument('--local_epoch', default=5, type=int)
+    parser.add_argument('--local_epoch', default=1, type=int)
     parser.add_argument('--rounds', default=100, type=int)
     parser.add_argument('--num_of_clients', default=5, type=int)
     parser.add_argument('--clients_per_round', default=5, type=int)
@@ -172,5 +172,5 @@ def run():
 
 
 if __name__ == '__main__':
-    wandb.init(project='Basis_Aggregation_{}'.format('cifar10'), name='local_simclr', entity='peilab')
+    # wandb.init(project='Basis_Aggregation_{}'.format('cifar10'), name='local_simclr', entity='peilab')
     run()

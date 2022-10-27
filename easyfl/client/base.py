@@ -134,13 +134,17 @@ class BaseClient(object):
 
         self._is_train = True
 
-        if self.conf['personalized']:
+        if self.conf['personalized'] and self._local_model != None:
             model = self._local_model
-
         self.download(model)
         self.track(metric.TRAIN_DOWNLOAD_SIZE, model_size(model))
         self.decompression()
         self.pre_train()
+
+
+
+
+
         self.train(conf, self.device)
         self.post_train()
 
