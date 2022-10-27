@@ -84,7 +84,7 @@ def get_model(model, encoder_network, predictor_network=TwoLayer):
         raise NotImplementedError
 
 
-def get_encoder_network(model, encoder_network, num_classes=10, projection_size=2048, projection_hidden_size=4096):
+def get_encoder_network(model, encoder_network, num_classes=10, projection_size=256, projection_hidden_size=256):
     if model in [MoCo, MoCoV2]:
         num_classes = 128
 
