@@ -83,8 +83,8 @@ def test_result(test_loader, logreg, device, model_path):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", default="cifar10", type=str)
-    parser.add_argument("--model_path", required=True, type=str, help="Path to pre-trained model (e.g. model-10.pt)")
-    parser.add_argument('--model', default='simsiam', type=str, help='name of the network')
+    parser.add_argument("--model_path", default='./saved_models/fedsimclr/fedsimclr_global_model_r_99.pth', type=str, help="Path to pre-trained model (e.g. model-10.pt)")
+    parser.add_argument('--model', default='simclr', type=str, help='name of the network')
     parser.add_argument("--image_size", default=32, type=int, help="Image size")
     parser.add_argument("--learning_rate", default=3e-3, type=float, help="Initial learning rate.")
     parser.add_argument("--batch_size", default=512, type=int, help="Batch size for training.")

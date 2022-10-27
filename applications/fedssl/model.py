@@ -471,9 +471,8 @@ class MoCoModel(BaseModel):
 
 # ------------- SimCLR Model -----------------
 
-
 class SimCLRModel(BaseModel):
-    def __init__(self, net=ResNet18(), image_size=32, projection_size=2048, projection_hidden_size=4096):
+    def __init__(self, net=ResNet18(), image_size=32, projection_size=256, projection_hidden_size=256):
         super().__init__()
 
         self.online_encoder = net

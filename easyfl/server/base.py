@@ -360,10 +360,8 @@ class BaseServer(object):
             # Update client config before training
             self.conf.client.task_id = self.conf.task_id
             self.conf.client.round_id = self._current_round
-
             uploaded_request = client.run_train(self._compressed_model, self.conf.client)
             uploaded_content = uploaded_request.content
-
             model = self.decompression(codec.unmarshal(uploaded_content.data))
             uploaded_models[client.cid] = model
             uploaded_weights[client.cid] = uploaded_content.data_size

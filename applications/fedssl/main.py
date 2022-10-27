@@ -14,7 +14,7 @@ ssl._create_default_https_context = ssl._create_unverified_context
 
 def run():
     parser = argparse.ArgumentParser(description='FedSSL')
-    parser.add_argument("--task_id", type=str, default="fedsimclr")
+    parser.add_argument("--task_id", type=str, default="local_simclr")
     parser.add_argument("--dataset", type=str, default='cifar10', help='options: cifar10, cifar100')
     parser.add_argument("--data_partition", type=str, default='class', help='options: class, iid, dir')
     parser.add_argument("--dir_alpha", type=float, default=0.1, help='alpha for dirichlet sampling')
@@ -137,7 +137,8 @@ def run():
             "momentum_update": momentum_update,
         },
         'device': 'cuda',
-        'resource_heterogeneous': {"grouping_strategy": ""}
+        'resource_heterogeneous': {"grouping_strategy": ""},
+        'personalized': True  # whether you use individual model without aggregation
     }
 
     if args.gpu > 1:
@@ -171,5 +172,5 @@ def run():
 
 
 if __name__ == '__main__':
-    wandb.init(project='Basis_Aggregation_{}'.format('cifar10'), name='simclr', entity='peilab')
+    wandb.init(project='Basis_Aggregation_{}'.format('cifar10'), name='local_simclr', entity='peilab')
     run()
