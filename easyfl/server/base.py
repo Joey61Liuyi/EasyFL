@@ -440,7 +440,8 @@ class BaseServer(object):
                         logits, labels = client.info_nce_loss(client.features)
                         client.loss = client.loss_fn(logits, labels)
                     else:
-                        client.loss = client.model(x1, x2)
+                        feature1, feature2, client.loss = client.model(x1, x2)
+                        client.features = torch.cat((feature1, feature2), dim=0)
 
                 if self.conf.semantic_align:
                     for client in self.grouped_clients:
@@ -454,7 +455,7 @@ class BaseServer(object):
                         client.b = b
                         client.w = w
 
-                    if self.conf.aggregation_method =='avg':
+                    if self.conf.aggregation_method =='avg' and self._current_round>1:
                         b_avg = []
                         for client in self.grouped_clients:
                             b_avg.append(client.b)

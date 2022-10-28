@@ -233,8 +233,8 @@ class BYOLModel(BaseModel):
             self,
             net=ResNet18(),
             image_size=32,
-            projection_size=2048,
-            projection_hidden_size=4096,
+            projection_size=256,
+            projection_hidden_size=256,
             moving_average_decay=0.99,
             stop_gradient=True,
             has_predictor=True,
@@ -302,7 +302,7 @@ class BYOLModel(BaseModel):
         loss_two = byol_loss_fn(online_pred_two, target_proj_one)
         loss = loss_one + loss_two
 
-        return loss.mean()
+        return online_pred_one, online_pred_two, loss.mean()
 
 
 class EMA:

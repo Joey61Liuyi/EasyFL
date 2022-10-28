@@ -13,20 +13,66 @@ import ssl
 ssl._create_default_https_context = ssl._create_unverified_context
 
 def run():
+
+    dataset = 'cifar10'
+    fed_ema = True
+    personalized = True  # whether you use individual model without aggregation
+    batch_wise = True  # whether to use batch_wise training paradim
+    semantic_align = True
+    fed_para = False
+    semantic_method = 'QR'
+    aggregation_method = 'semantic'
+
+
+    if fed_ema:
+        name = 'fedema'
+        personalized = False
+        model = 'byol'
+        update_encoder = 'dynamic_ema_online'
+        update_predictor = 'dynamic_dapu'
+        batch_wise = True
+        semantic_align = False
+    else:
+        model = 'byol'
+        update_encoder = 'online'
+        update_predictor = 'global'
+
+        name0 = model
+        if personalized:
+            name1 = '_local_'
+        else:
+            name1 = '_weights_agg_'
+
+        if batch_wise:
+            name2 = 'batch_wise_'
+        else:
+            name2 = 'epoch_wise_'
+
+        if semantic_align:
+            name3 = semantic_method + '_' + aggregation_method
+        else:
+            name3 = ''
+        if fed_para:
+            name3 = 'fed_para'
+        name = name0+name1+name2+name3
+
+    task_id = name
+    # wandb.init(project='EasyFL_{}'.format(dataset), name=name, entity='peilab')
+
     parser = argparse.ArgumentParser(description='FedSSL')
-    parser.add_argument("--task_id", type=str, default="local_simclr")
-    parser.add_argument("--dataset", type=str, default='cifar10', help='options: cifar10, cifar100')
+    parser.add_argument("--task_id", type=str, default=task_id)
+    parser.add_argument("--dataset", type=str, default=dataset, help='options: cifar10, cifar100')
     parser.add_argument("--data_partition", type=str, default='class', help='options: class, iid, dir')
     parser.add_argument("--dir_alpha", type=float, default=0.1, help='alpha for dirichlet sampling')
-    parser.add_argument('--model', default='byol', type=str, help='options: byol, simsiam, simclr, moco, moco_v2')
+    parser.add_argument('--model', default=model, type=str, help='options: byol, simsiam, simclr, moco, moco_v2')
     parser.add_argument('--encoder_network', default='resnet18', type=str,
                         help='network architecture of encoder, options: resnet18, resnet50')
     parser.add_argument('--predictor_network', default='2_layer', type=str,
                         help='network of predictor, options: 1_layer, 2_layer')
 
-    parser.add_argument('--batch_size', default=350, type=int)
-    parser.add_argument('--local_epoch', default=1, type=int)
-    parser.add_argument('--rounds', default=1, type=int)
+    parser.add_argument('--batch_size', default=400, type=int)
+    parser.add_argument('--local_epoch', default=5, type=int)
+    parser.add_argument('--rounds', default=100, type=int)
     parser.add_argument('--num_of_clients', default=5, type=int)
     parser.add_argument('--clients_per_round', default=5, type=int)
     parser.add_argument('--class_per_client', default=10, type=int,
@@ -37,8 +83,8 @@ def run():
     parser.add_argument('--random_selection', action='store_true', help='whether randomly select clients')
 
     parser.add_argument('--aggregate_encoder', default='online', type=str, help='options: online, target')
-    parser.add_argument('--update_encoder', default='dynamic_ema_online', type=str, help='options: online, target, both, none')
-    parser.add_argument('--update_predictor', default='dynamic_dapu', type=str, help='options: global, local, dapu')
+    parser.add_argument('--update_encoder', default=update_encoder, type=str, help='options: online, target, both, none')
+    parser.add_argument('--update_predictor', default=update_predictor, type=str, help='options: global, local, dapu')
     parser.add_argument('--dapu_threshold', default=0.4, type=float, help='DAPU threshold value')
     parser.add_argument('--weight_scaler', default=1.0, type=float, help='weight scaler for different class per client')
     parser.add_argument('--auto_scaler', default='y', type=str, help='use value to compute auto scaler')
@@ -49,7 +95,7 @@ def run():
     parser.add_argument('--predictor_weight', type=float, default=0,
                         help='for ema predictor update, apply on local predictor')
 
-    parser.add_argument('--test_every', default=10, type=int, help='test every x rounds')
+    parser.add_argument('--test_every', default=100, type=int, help='test every x rounds')
     parser.add_argument('--save_model_every', default=10, type=int, help='save model every x rounds')
     parser.add_argument('--save_predictor', action='store_true', help='whether save predictor')
 
@@ -138,43 +184,12 @@ def run():
         },
         'device': 'cuda',
         'resource_heterogeneous': {"grouping_strategy": ""},
-        'personalized': True,  # whether you use individual model without aggregation
-        'batch_wise': True,     # whether to use batch_wise training paradim
-        'semantic_align': False,
-        'fed_para': True,
-        'semantic_method': 'QR',
-        'aggregation_method': 'semantic',
+        'personalized': personalized,
+        'batch_wise': batch_wise,
+        'semantic_align': semantic_align,
+        'semantic_method': semantic_method,
+        'aggregation_method': aggregation_method,
     }
-
-    # global_var._init()
-    # global_var.set_value('fed_para', config['fed_para'])
-
-    name0 = args.model
-
-    fed_para = config['fed_para']
-
-    if config['personalized']:
-        name1 = '_local_'
-    else:
-        name1 = '_weights_agg_'
-
-    if config['batch_wise']:
-        name2 = 'batch_wise_'
-    else:
-        name2 = 'epoch_wise_'
-
-    if config['semantic_align']:
-        name3 = config['semantic_method'] + '_' + config['aggregation_method']
-    else:
-        name3 = ''
-    if fed_para:
-        name3 = 'fed_para'
-
-    # name = name0+name1+name2+name3
-    name = 'fedema'
-    config['task_id'] = name
-    # wandb.init(project='EasyFL_{}'.format(args.dataset), name=name, entity='peilab')
-
 
     if args.gpu > 1:
         rank, local_rank, world_size, host_addr = slurm.setup()
@@ -199,8 +214,7 @@ def run():
 
     model = get_model(args.model, args.encoder_network, args.predictor_network, fed_para)
     param_size = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    param_original = 38460480
-    print('model size partio: {}'.format(param_size/param_original))
+    print('model size: {}'.format(param_size))
     model = model.to('cuda')
     easyfl.register_model(model)
     easyfl.register_client(FedSSLClient)
