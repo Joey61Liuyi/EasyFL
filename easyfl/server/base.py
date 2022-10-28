@@ -475,6 +475,7 @@ class BaseServer(object):
 
                 for client in self.grouped_clients:
                     client.loss.backward()
+                    torch.nn.utils.clip_grad_norm(client.model.parameters(), max_norm=1, norm_type=2)
                     client.optimizer.step()
                     client.batch_loss.append(client.loss.item())
 

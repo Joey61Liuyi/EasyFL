@@ -32,7 +32,12 @@ def get_encoder(arch=RESNET18):
     return models.__dict__[arch]
 
 
-def get_model(model, encoder_network, predictor_network=TwoLayer):
+def get_model(model, encoder_network, predictor_network=TwoLayer, fed_para=False):
+
+    if fed_para:
+        from easyfl.models.fed_para import ResNet18
+    else:
+        from easyfl.models.resnet import ResNet18, ResNet50
     mlp = False
     T = 0.07
     stop_gradient = True

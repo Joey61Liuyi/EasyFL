@@ -3,6 +3,8 @@ import torch
 import transform
 from model import SimSiam, MoCo
 
+fed_para = None
+
 
 def get_transformation(model):
     if model == SimSiam:

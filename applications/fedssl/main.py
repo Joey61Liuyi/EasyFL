@@ -18,15 +18,15 @@ def run():
     parser.add_argument("--dataset", type=str, default='cifar10', help='options: cifar10, cifar100')
     parser.add_argument("--data_partition", type=str, default='class', help='options: class, iid, dir')
     parser.add_argument("--dir_alpha", type=float, default=0.1, help='alpha for dirichlet sampling')
-    parser.add_argument('--model', default='simclr', type=str, help='options: byol, simsiam, simclr, moco, moco_v2')
+    parser.add_argument('--model', default='byol', type=str, help='options: byol, simsiam, simclr, moco, moco_v2')
     parser.add_argument('--encoder_network', default='resnet18', type=str,
                         help='network architecture of encoder, options: resnet18, resnet50')
     parser.add_argument('--predictor_network', default='2_layer', type=str,
                         help='network of predictor, options: 1_layer, 2_layer')
 
-    parser.add_argument('--batch_size', default=400, type=int)
-    parser.add_argument('--local_epoch', default=5, type=int)
-    parser.add_argument('--rounds', default=100, type=int)
+    parser.add_argument('--batch_size', default=350, type=int)
+    parser.add_argument('--local_epoch', default=1, type=int)
+    parser.add_argument('--rounds', default=1, type=int)
     parser.add_argument('--num_of_clients', default=5, type=int)
     parser.add_argument('--clients_per_round', default=5, type=int)
     parser.add_argument('--class_per_client', default=10, type=int,
@@ -37,12 +37,12 @@ def run():
     parser.add_argument('--random_selection', action='store_true', help='whether randomly select clients')
 
     parser.add_argument('--aggregate_encoder', default='online', type=str, help='options: online, target')
-    parser.add_argument('--update_encoder', default='online', type=str, help='options: online, target, both, none')
-    parser.add_argument('--update_predictor', default='global', type=str, help='options: global, local, dapu')
+    parser.add_argument('--update_encoder', default='dynamic_ema_online', type=str, help='options: online, target, both, none')
+    parser.add_argument('--update_predictor', default='dynamic_dapu', type=str, help='options: global, local, dapu')
     parser.add_argument('--dapu_threshold', default=0.4, type=float, help='DAPU threshold value')
     parser.add_argument('--weight_scaler', default=1.0, type=float, help='weight scaler for different class per client')
     parser.add_argument('--auto_scaler', default='y', type=str, help='use value to compute auto scaler')
-    parser.add_argument('--auto_scaler_target', default=0.8, type=float,
+    parser.add_argument('--auto_scaler_target', default=0.7, type=float,
                         help='target weight for the first time scaling')
     parser.add_argument('--encoder_weight', type=float, default=0,
                         help='for ema encoder update, apply on local encoder')
@@ -140,12 +140,18 @@ def run():
         'resource_heterogeneous': {"grouping_strategy": ""},
         'personalized': True,  # whether you use individual model without aggregation
         'batch_wise': True,     # whether to use batch_wise training paradim
-        'semantic_align': True,
+        'semantic_align': False,
+        'fed_para': True,
         'semantic_method': 'QR',
         'aggregation_method': 'semantic',
     }
 
+    # global_var._init()
+    # global_var.set_value('fed_para', config['fed_para'])
+
     name0 = args.model
+
+    fed_para = config['fed_para']
 
     if config['personalized']:
         name1 = '_local_'
@@ -161,11 +167,13 @@ def run():
         name3 = config['semantic_method'] + '_' + config['aggregation_method']
     else:
         name3 = ''
+    if fed_para:
+        name3 = 'fed_para'
 
-    name = name0+name1+name2+name3
-    args.task_id = name
-
-    wandb.init(project='EasyFL_{}'.format(args.dataset), name=name, entity='peilab')
+    # name = name0+name1+name2+name3
+    name = 'fedema'
+    config['task_id'] = name
+    # wandb.init(project='EasyFL_{}'.format(args.dataset), name=name, entity='peilab')
 
 
     if args.gpu > 1:
@@ -189,7 +197,10 @@ def run():
                                                                args.label_ratio)
         easyfl.register_dataset(train_data, test_data)
 
-    model = get_model(args.model, args.encoder_network, args.predictor_network)
+    model = get_model(args.model, args.encoder_network, args.predictor_network, fed_para)
+    param_size = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    param_original = 38460480
+    print('model size partio: {}'.format(param_size/param_original))
     model = model.to('cuda')
     easyfl.register_model(model)
     easyfl.register_client(FedSSLClient)
