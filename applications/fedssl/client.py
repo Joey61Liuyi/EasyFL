@@ -216,7 +216,7 @@ class FedSSLClient(BaseClient):
                     logits, labels = self.info_nce_loss(features)
                     loss = loss_fn(logits, labels)
                 else:
-                    loss = self.model(x1, x2)
+                    feature1, feature2, loss = self.model(x1, x2)
 
                 loss.backward()
                 optimizer.step()

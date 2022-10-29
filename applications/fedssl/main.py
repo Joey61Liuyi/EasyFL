@@ -15,11 +15,11 @@ ssl._create_default_https_context = ssl._create_unverified_context
 def run():
 
     dataset = 'cifar10'
-    fed_ema = True
-    personalized = True  # whether you use individual model without aggregation
-    batch_wise = True  # whether to use batch_wise training paradim
-    semantic_align = True
-    fed_para = False
+    fed_ema = False
+    personalized = False  # whether you use individual model without aggregation
+    batch_wise = False  # whether to use batch_wise training paradim
+    semantic_align = False
+    fed_para = True
     semantic_method = 'QR'
     aggregation_method = 'semantic'
 
@@ -57,7 +57,7 @@ def run():
         name = name0+name1+name2+name3
 
     task_id = name
-    # wandb.init(project='EasyFL_{}'.format(dataset), name=name, entity='peilab')
+    wandb.init(project='EasyFL_{}'.format(dataset), name=name, entity='peilab')
 
     parser = argparse.ArgumentParser(description='FedSSL')
     parser.add_argument("--task_id", type=str, default=task_id)
@@ -70,7 +70,7 @@ def run():
     parser.add_argument('--predictor_network', default='2_layer', type=str,
                         help='network of predictor, options: 1_layer, 2_layer')
 
-    parser.add_argument('--batch_size', default=400, type=int)
+    parser.add_argument('--batch_size', default=300, type=int)
     parser.add_argument('--local_epoch', default=5, type=int)
     parser.add_argument('--rounds', default=100, type=int)
     parser.add_argument('--num_of_clients', default=5, type=int)
